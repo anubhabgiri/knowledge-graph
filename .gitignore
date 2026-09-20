@@ -1,4 +1,10 @@
 /.venv
 .env
-*/__pycache__
-/__pycache__
+
+# Ignore Python bytecode and cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Downloaded embedding models (run download_models.py to populate)
+/models/
