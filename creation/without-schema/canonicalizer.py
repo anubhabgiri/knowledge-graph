@@ -25,8 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import numpy as np
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 from sentence_transformers import SentenceTransformer
 
 from models import CanonicalizationDecision, Triplet
@@ -55,9 +55,32 @@ Example triplet using this relation:
 Candidate canonical relations (ranked by semantic similarity, most similar first):
 {choices}
 
+
 Choose the candidate whose meaning best matches "{relation}" in the context above.
 If no candidate is a good semantic match, respond with the original relation name "{relation}".
 """
+
+# Project root is three levels up from this file (project/creation/without-schema/canonicalizer.py)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _resolve_embedder_path(model_name: str) -> str:
+    """Return a local filesystem path if the model was pre-downloaded, else the HF model name.
+
+    Pre-download once with:  python creation/without-schema/download_models.py
+    Model is saved to:       <project_root>/models/<model_name>/
+    """
+    local_path = _PROJECT_ROOT / "models" / model_name
+    if local_path.exists():
+        logger.info("Loading embedder from local path: %s", local_path)
+        return str(local_path)
+    logger.info(
+        "Local model not found at '%s' — loading '%s' from HuggingFace (run "
+        "download_models.py to cache it locally).",
+        local_path,
+        model_name,
+    )
+    return model_name
 
 
 class Canonicalizer:
@@ -65,34 +88,37 @@ class Canonicalizer:
 
     Parameters
     ----------
+    llm:
+        A pre-built LangChain ``BaseChatModel`` instance.  Use
+        :class:`llm_manager.LLMManager` to construct one for any supported
+        provider (Gemini, OpenAI, Ollama).
     top_k:
         Number of nearest-neighbour candidates to surface from the schema for
         each LLM canonicalization call.
     embedder_model:
         ``sentence-transformers`` model name for computing relation embeddings.
-    llm_model:
-        Gemini model identifier for the LLM decision step.
-    max_retries:
-        Automatic retries on transient API errors.
+        If a local copy exists under ``<project_root>/models/<embedder_model>/``
+        (placed there by ``download_models.py``), it is loaded from disk with no
+        network requests.
     """
 
     def __init__(
         self,
+        llm: BaseChatModel,
         top_k: int = 5,
         embedder_model: str = "all-MiniLM-L6-v2",
-        llm_model: str = "gemini-2.5-flash",
-        max_retries: int = 2,
     ) -> None:
         self.top_k = top_k
-        self._embedder = SentenceTransformer(embedder_model)
+        resolved = _resolve_embedder_path(embedder_model)
+        self._embedder = SentenceTransformer(resolved, local_files_only=resolved != embedder_model)
 
-        llm = ChatGoogleGenerativeAI(model=llm_model, max_retries=max_retries)
         self._chain = llm.with_structured_output(CanonicalizationDecision)
 
         # Schema state (populated by bootstrap_schema)
         self._schema: dict[str, str] = {}
         self._schema_items: list[tuple[str, str]] = []
         self._schema_embeddings: np.ndarray | None = None
+
 
     # ------------------------------------------------------------------
     # Schema management

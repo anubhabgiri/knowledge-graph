@@ -8,6 +8,7 @@ from pathlib import Path
 # Allow running this file directly or importing it from the pipeline
 sys.path.insert(0, str(Path(__file__).parent))
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -62,10 +63,15 @@ class TripletExtractor:
         Gemini model identifier.
     max_retries:
         Number of automatic retries on transient API errors.
+    llm:
+        A pre-built LangChain ``BaseChatModel`` instance.  Use
+        :class:`llm_manager.LLMManager` to construct one for any supported
+        provider (Gemini, OpenAI, Ollama).
     """
 
     def __init__(self, model: str = "gemini-2.5-flash", max_retries: int = 2) -> None:
         llm = ChatGoogleGenerativeAI(model=model, max_retries=max_retries)
+    def __init__(self, llm: BaseChatModel) -> None:
         self._chain = llm.with_structured_output(RawTripletList)
 
     def extract(self, chunk: str, chunk_index: int) -> list[Triplet]:

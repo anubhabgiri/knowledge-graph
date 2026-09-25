@@ -75,10 +75,20 @@ logging.basicConfig(
     help="Number of canonical-relation candidates surfaced per LLM call.",
 )
 @click.option(
-    "--model",
-    default="gemini-3.6-flash",
+    "--provider",
+    default="gemini",
     show_default=True,
-    help="Gemini model name used for all LLM calls.",
+    type=click.Choice(["gemini", "openai", "ollama"], case_sensitive=False),
+    help="LLM provider to use for all pipeline stages.",
+)
+@click.option(
+    "--model",
+    default=None,
+    show_default=True,
+    help=(
+        "Model identifier for the chosen provider.  "
+        "Defaults: gemini→gemini-2.5-flash, openai→gpt-4o-mini, ollama→llama3.2"
+    ),
 )
 def main(
     input_path: Path,
@@ -86,7 +96,8 @@ def main(
     chunk_size: int,
     chunk_overlap: int,
     top_k: int,
-    model: str,
+    provider: str,
+    model: str | None,
 ) -> None:
     """Extract a knowledge graph from a large text file — no predefined schema required.
 
@@ -112,6 +123,7 @@ def main(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         top_k_choices=top_k,
+        provider=provider,
         model=model,
     )
 

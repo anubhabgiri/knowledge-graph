@@ -78,6 +78,13 @@ OPTIONAL MATCH (n)-[r]->(m)
 RETURN n, r, m
 ```
 
+Delete all nodes and relationships
+
+```sql
+MATCH (n)
+DETACH DELETE n
+```
+
 ### Schema Free Knowledge Graph Extraction
 
 Extract, Define and Canonicalize
@@ -122,3 +129,16 @@ Large texts cannot be sent wholesale to an LLM due to context limits and for qua
 The `chunk_overlap` window ensures that entities/relations that span a chunk boundary (e.g., a pronoun resolved in the next sentence) are still captured.
 
 ---
+
+## Pipeline Usage
+
+```bash
+# Gemini (default)
+python creation/without-schema/main.py --input doc.txt --provider gemini --model gemini-2.5-flash
+
+# OpenAI
+python creation/without-schema/main.py --input doc.txt --provider openai --model gpt-4o
+
+# Ollama (local)
+python creation/without-schema/main.py --input doc.txt --provider ollama --model llama3.2
+```

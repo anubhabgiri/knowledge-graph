@@ -13,6 +13,7 @@ from canonicalizer import Canonicalizer
 from chunker import TextChunker
 from definer import RelationDefiner
 from extractor import TripletExtractor
+from llm_manager import LLMManager
 from merger import merge
 from models import GraphOutput, Triplet
 
@@ -25,7 +26,9 @@ def run(
     chunk_size: int = 512,
     chunk_overlap: int = 64,
     top_k_choices: int = 5,
-    model: str = "gemini-2.5-flash",
+    provider: str = "gemini",
+    model: str | None = None,
+    max_retries: int = 2,
 ) -> GraphOutput:
     """Run the full schema-free knowledge graph extraction pipeline.
 
@@ -50,17 +53,26 @@ def run(
         Overlap tokens between consecutive chunks.
     top_k_choices:
         Number of schema candidates to surface per canonicalization LLM call.
+    provider:
+        LLM provider to use: ``"gemini"``, ``"openai"``, or ``"ollama"``.
     model:
-        Gemini model name used for all LLM calls.
+        Model identifier for the chosen provider.  When ``None`` the provider's
+        default model is used (see :class:`llm_manager.LLMManager`).
+    max_retries:
+        Number of automatic retries on transient API errors (not used by Ollama).
 
     Returns
     -------
     GraphOutput
         The final structured knowledge graph (also written to *output_path*).
     """
+    # Build a single shared LLM instance for all pipeline stages
+    llm = LLMManager.build(provider=provider, model=model, max_retries=max_retries)
+    model_label = f"{provider}/{model or 'default'}"
+
     logger.info(
-        "Pipeline start | model=%s  chunk_size=%d  overlap=%d  top_k=%d",
-        model, chunk_size, chunk_overlap, top_k_choices,
+        "Pipeline start | provider=%s  model=%s  chunk_size=%d  overlap=%d  top_k=%d",
+        provider, model or "default", chunk_size, chunk_overlap, top_k_choices,
     )
 
     # ------------------------------------------------------------------
@@ -73,7 +85,7 @@ def run(
     # ------------------------------------------------------------------
     # Stage 2: Triplet extraction  (Step 1 from notebook)
     # ------------------------------------------------------------------
-    extractor = TripletExtractor(model=model)
+    extractor = TripletExtractor(llm=llm)
     all_triplets: list[Triplet] = []
 
     for i, chunk in enumerate(chunks):
@@ -84,7 +96,7 @@ def run(
 
     if not all_triplets:
         logger.warning("No triplets extracted — writing empty graph.")
-        output = _empty_output(model, len(chunks))
+        output = _empty_output(model_label, len(chunks))
         _write_json(output, output_path)
         return output
 
@@ -95,13 +107,13 @@ def run(
     # ------------------------------------------------------------------
     unique_count = len({t.relation for t in all_triplets})
     logger.info("Defining %d unique relation(s) …", unique_count)
-    definer = RelationDefiner(model=model)
+    definer = RelationDefiner(llm=llm)
     relation_definitions = definer.define(all_triplets)
 
     # ------------------------------------------------------------------
     # Stage 4: Schema bootstrap + Canonicalization  (Step 3 from notebook)
     # ------------------------------------------------------------------
-    canonicalizer = Canonicalizer(top_k=top_k_choices, llm_model=model)
+    canonicalizer = Canonicalizer(llm=llm, top_k=top_k_choices)
     canonicalizer.bootstrap_schema(relation_definitions)
 
     canonical_mapping = canonicalizer.canonicalize_all(relation_definitions, all_triplets)
@@ -138,7 +150,8 @@ def run(
         relation_definitions=canonical_definitions,
         metadata={
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-            "model": model,
+            "provider": provider,
+            "model": model_label,
             "chunk_count": len(chunks),
             "raw_triplet_count": len(all_triplets),
             "unique_relation_count_before_canonicalization": unique_count,
