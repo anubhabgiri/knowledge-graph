@@ -1,0 +1,52 @@
+[
+  {
+    "id": "webnlg_001",
+    "category": "Astronaut",
+    "text": "Alan Shepard was born in New Hampshire. He was selected by NASA in 1959 and served as a crew member on Apollo 14.",
+    "triplets": [
+      {
+        "subject": "Alan Shepard",
+        "relation": "birthPlace",
+        "object": "New Hampshire"
+      },
+      {
+        "subject": "Alan Shepard",
+        "relation": "selectedBy",
+        "object": "NASA"
+      },
+      {
+        "subject": "Alan Shepard",
+        "relation": "crewMember",
+        "object": "Apollo 14"
+      }
+    ]
+  },
+  {
+    "id": "webnlg_002",
+    "category": "Company",
+    "text": "Microsoft was founded by Bill Gates and Paul Allen. Satya Nadella serves as the chief executive officer of Microsoft, which is headquartered in Redmond, Washington.",
+    "triplets": [
+      {
+        "subject": "Microsoft",
+        "relation": "foundedBy",
+        "object": "Bill Gates"
+      },
+      {
+        "subject": "Microsoft",
+        "relation": "foundedBy",
+        "object": "Paul Allen"
+      },
+      {
+        "subject": "Microsoft",
+        "relation": "ceo",
+        "object": "Satya Nadella"
+      },
+      {
+        "subject": "Microsoft",
+        "relation": "headquarters",
+        "object": "Redmond, Washington"
+      }
+    ]
+  }
+]
+

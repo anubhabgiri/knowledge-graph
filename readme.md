@@ -3,87 +3,8 @@
 
 I am trying to build an agentic system that can efficiently navigate a knowledge graph and answer questions based on deep relations and heuristics
 
-## Ollama setup
-
-```
-ollama run qwen2.5-coder:7b
-```
-
-### Neo4j connection
-
-The graph tools query a live Neo4j database over Bolt; there is no in-memory fixture.
-Configure the process with these environment variables (a `.env` file is supported):
-
-```
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your-password
-NEO4J_DATABASE=neo4j
-# Optional: human-readable node identifier property (default: name)
-NEO4J_NODE_ID_PROPERTY=name
-```
-
-For the Docker image in this repository, `NEO4J_AUTH=neo4j/password` is also
-accepted as a convenience; prefer `NEO4J_PASSWORD` for an external instance.
-
-`search_nodes` returns a `node_id` plus Neo4j's `element_id`; either can be supplied
-to `get_neighbors` and `get_node_details`. Neighbor results include both directions.
-
-### Load the example graph
-
-The original example companies, product, supplier, and four relationships can be
-loaded into your configured database with:
-
-```
-python seed_graph.py
-```
-
-The command is idempotent: it adds a `KnowledgeGraphNode` label, creates a unique
-`name` constraint for that label, and uses `MERGE`, so it is safe to run again.
-
-### Optional local Neo4j container
-
-Build and start a fresh local database with the default credentials
-`neo4j/password`:
-
-```
-docker build -t local-neo4j .
-docker run --name neo4j-local -d -p 7474:7474 -p 7687:7687 local-neo4j
-```
-
-Neo4j stores its password in the container's `/data` volume on first startup.
-Changing `NEO4J_AUTH` afterward does **not** change an existing password. For this
-example, if no graph data needs to be retained, recreate the local container and
-its anonymous volumes to reset it to the Dockerfile default:
-
-```
-docker rm -fv neo4j-local
-docker run --name neo4j-local -d -p 7474:7474 -p 7687:7687 local-neo4j
-```
-
-Then configure the client and load the example graph:
-
-```
-NEO4J_AUTH=neo4j/password python seed_graph.py
-```
 
 
-### Cypher query
-
-Return all nodes and relationship
-
-```sql
-MATCH (n)
-OPTIONAL MATCH (n)-[r]->(m)
-RETURN n, r, m
-```
-
-Delete all nodes and relationships
-
-```sql
-MATCH (n)
-DETACH DELETE n
-```
 
 ### Schema Free Knowledge Graph Extraction
 
@@ -142,3 +63,76 @@ python creation/without-schema/main.py --input doc.txt --provider openai --model
 # Ollama (local)
 python creation/without-schema/main.py --input doc.txt --provider ollama --model llama3.2
 ```
+
+```bash
+# For general domain text (default)
+python creation/without-schema/main.py -i input.txt -o output.json --domain general
+
+# For biomedical / BC5CDR text
+python creation/without-schema/main.py -i pubmed_abstract.txt -o output.json --domain biomedical
+```
+
+
+## Directory Structure 
+
+```text
+evaluation/
+├── __init__.py
+├── models.py                  # Ground-truth, sample, match, and report data models
+├── matcher.py                 # Hungarian maximum-weight matching + entity & predicate similarity
+├── metrics.py                 # Micro/Macro Precision, Recall, F1 & report formatting
+├── runner.py                  # Benchmark orchestrator: dataset loader -> pipeline -> scorer
+├── main.py                    # CLI entrypoint for running benchmarks
+├── data/                      # Bundled sample benchmark datasets (zero-download testing)
+│   ├── bc5cdr_sample.pubtator # Curated BC5CDR PubMed abstracts with gold CID relations
+│   └── webnlg_sample.json     # Curated WebNLG general-domain RDF instances
+└── datasets/                  # Extensible benchmark loaders
+    ├── base.py                # Abstract BaseDatasetLoader
+    ├── bc5cdr.py              # BioCreative V PubTator format parser + MeSH mapper
+    └── webnlg.py              # WebNLG JSON format loader
+```
+
+### Evaluation Pipeline Usage
+
+```bash
+# Evaluate on BC5CDR samples with your local Ollama model (no API costs)
+.venv/bin/python evaluation/main.py --dataset bc5cdr --limit 3 --provider ollama --model qwen2.5-coder:7b
+
+# Or with Gemini:
+.venv/bin/python evaluation/main.py --dataset bc5cdr --limit 3 --provider gemini --model gemini-2.5-flash
+
+.venv/bin/python evaluation/main.py --dataset webnlg --limit 2 --provider ollama --model qwen2.5-coder:7b
+
+# Custom dataset
+.venv/bin/python evaluation/main.py \
+  --dataset bc5cdr \
+  --data-path /path/to/CDR_TestSet.PubTator.txt \
+  --limit 10 \
+  --threshold 0.70 \
+  --output output/bc5cdr_eval_report.json
+
+  Options:
+  -i, --input FILE                Path to the input text file.  [required]
+  -o, --output PATH               Destination path for the output JSON file.
+                                  [default: output.json]
+  --chunk-size INTEGER            Maximum tokens per chunk.  [default: 512]
+  --chunk-overlap INTEGER         Overlap tokens between consecutive chunks.
+                                  [default: 64]
+  --top-k INTEGER                 Number of canonical-relation candidates
+                                  surfaced per LLM call.  [default: 5]
+  --min-similarity FLOAT          Minimum cosine similarity threshold to
+                                  consider candidate relations for
+                                  canonicalization.  [default: 0.45]
+  -d, --domain [general|biomedical]
+                                  Domain preset for prompts and reasoning
+                                  rules ('general' or 'biomedical').
+                                  [default: general]
+  --provider [gemini|openai|ollama]
+                                  LLM provider to use for all pipeline stages.
+                                  [default: gemini]
+  --model TEXT                    Model identifier for the chosen provider.
+                                  Defaults: gemini→gemini-2.5-flash,
+                                  openai→gpt-4o-mini, ollama→llama3.2
+  --help                          Show this message and exit.
+```
+

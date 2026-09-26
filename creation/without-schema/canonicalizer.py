@@ -34,17 +34,19 @@ from models import CanonicalizationDecision, Triplet
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Prompts
+# Domain Prompts
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = (
-    "You are an expert in ontology and knowledge graph construction. "
-    "Select the most semantically appropriate canonical relation from a ranked list of candidates."
-)
-
-_USER_PROMPT_TEMPLATE = """\
+_PROMPTS = {
+    "general": {
+        "system": (
+            "You are an expert in ontology engineering and knowledge graph construction. "
+            "Your objective is to maintain high semantic precision and prevent schema degradation. "
+            "Only merge relations that are genuine, unambiguous semantic equivalents."
+        ),
+        "user_template": """\
 A relation was extracted from text. Your task is to decide whether it should be merged \
-into one of the provided canonical relations, or kept as-is.
+into one of the candidate canonical relations, or kept as-is.
 
 Extracted relation: "{relation}"
 Definition:         {definition}
@@ -52,13 +54,48 @@ Definition:         {definition}
 Example triplet using this relation:
   [{subject}] --[{relation}]--> [{object_entity}]
 
-Candidate canonical relations (ranked by semantic similarity, most similar first):
+Candidate canonical relations (ranked by semantic similarity):
 {choices}
 
+CRITICAL RULES TO AVOID OVER-MERGING:
+1. Strict Semantic Equivalence: Merge ONLY if the candidate relation conveys the EXACT same meaning and can replace "{relation}" without loss of specificity (e.g. "bornIn" <-> "birthPlace", "ceoOf" <-> "chiefExecutiveOfficerOf").
+2. Polarity & Antonym Guard: NEVER merge relations with opposing meanings or effects (e.g. NEVER merge "parentOf" with "childOf", "foundedBy" with "acquiredBy").
+3. Causal Strength Guard: NEVER merge direct causation with indirect association (e.g. "caused" vs "associatedWith").
+4. Directionality Guard: NEVER merge inverse relations (e.g. "employerOf" vs "employedBy").
+5. Specificity Guard: NEVER merge a specific relation into an overly broad, vague relation (e.g. do NOT merge "graduatedFrom" into "associatedWith" or "relatedTo").
+6. Conservative Default: If NONE of the candidates is an exact semantic match, or if you are in ANY doubt, respond with the original relation name "{relation}".
+""",
+    },
+    "biomedical": {
+        "system": (
+            "You are an expert in biomedical ontology engineering, pharmacology, and clinical knowledge graphs. "
+            "Your objective is to maintain strict medical accuracy and prevent schema degradation. "
+            "Only merge relations that are genuine, unambiguous medical equivalents."
+        ),
+        "user_template": """\
+A biomedical relation was extracted from literature. Your task is to decide whether it should be merged \
+into one of the candidate canonical relations, or kept as-is.
 
-Choose the candidate whose meaning best matches "{relation}" in the context above.
-If no candidate is a good semantic match, respond with the original relation name "{relation}".
-"""
+Extracted relation: "{relation}"
+Definition:         {definition}
+
+Example triplet using this relation:
+  [{subject}] --[{relation}]--> [{object_entity}]
+
+Candidate canonical relations (ranked by semantic similarity):
+{choices}
+
+CRITICAL RULES TO AVOID OVER-MERGING IN BIOMEDICAL CONTEXTS:
+1. Strict Semantic Equivalence: Merge ONLY if the candidate relation conveys the EXACT same clinical/pharmacological meaning (e.g. "causesCondition" <-> "inducesDisease", "administeredTo" <-> "givenTo").
+2. Polarity & Antonym Guard: NEVER merge opposing clinical effects (e.g. NEVER merge "treats" or "prevents" with "causes" or "induces"; NEVER merge "inhibits" with "activates"; NEVER merge "increasesRisk" with "decreasesRisk").
+3. Causality vs Indication Guard: NEVER merge drug-induced toxicity (CID) with therapeutic indication or off-label use.
+4. Causal Strength Guard: NEVER merge direct causal etiology ("inducesCondition") with mere observational correlation ("associatedWith", "coOccursWith", "studiedIn").
+5. Directionality Guard: NEVER merge inverse relationships (e.g. "administeredTo" vs "receivedBy", "metabolizedBy" vs "metabolizes").
+6. Specificity Guard: NEVER collapse fine-grained clinical relations into broad catch-alls (e.g. do NOT merge "diagnosedWith" or "treatedWith" into "affects" or "relatedTo").
+7. Conservative Default: If NONE of the candidates is an exact semantic match, or if you are in ANY doubt, respond with the original relation name "{relation}".
+""",
+    },
+}
 
 # Project root is three levels up from this file (project/creation/without-schema/canonicalizer.py)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -106,9 +143,13 @@ class Canonicalizer:
         self,
         llm: BaseChatModel,
         top_k: int = 5,
+        min_similarity: float = 0.45,
         embedder_model: str = "all-MiniLM-L6-v2",
+        domain: str = "general",
     ) -> None:
         self.top_k = top_k
+        self.min_similarity = min_similarity
+        self.domain = domain.lower() if domain else "general"
         resolved = _resolve_embedder_path(embedder_model)
         self._embedder = SentenceTransformer(resolved, local_files_only=resolved != embedder_model)
 
@@ -202,19 +243,24 @@ class Canonicalizer:
     ) -> str:
         """Run one LLM canonicalization call for a single relation. Returns canonical name."""
         candidates = self._retrieve_top_k(relation, definition)
-        if not candidates:
+        # If there are no candidate alternatives other than the relation itself, skip LLM
+        alternatives = [c for c in candidates if c[0] != relation]
+        if not alternatives:
+            logger.debug("No close alternative candidates for '%s' — keeping original.", relation)
             return relation
 
-        # Build numbered choice list
+        # Build numbered choice list including candidate relation names, scores, and definitions
         choices_lines = [
-            f"  {i + 1}. '{rel}': {defn}" for i, (rel, defn) in enumerate(candidates)
+            f"  {i + 1}. '{rel}' (similarity: {score:.2f}): {defn}"
+            for i, (rel, defn, score) in enumerate(candidates)
         ]
         choices_str = "\n".join(choices_lines)
 
+        prompt_config = _PROMPTS.get(self.domain, _PROMPTS["general"])
         messages = [
-            SystemMessage(content=_SYSTEM_PROMPT),
+            SystemMessage(content=prompt_config["system"]),
             HumanMessage(
-                content=_USER_PROMPT_TEMPLATE.format(
+                content=prompt_config["user_template"].format(
                     relation=relation,
                     definition=definition or "(no definition available)",
                     subject=subject,
@@ -225,7 +271,16 @@ class Canonicalizer:
         ]
         try:
             decision: CanonicalizationDecision = self._chain.invoke(messages)  # type: ignore[assignment]
-            return decision.canonical_relation.strip() or relation
+            canonical = decision.canonical_relation.strip() or relation
+            valid_choices = {c[0] for c in candidates} | {relation}
+            if canonical not in valid_choices:
+                logger.warning(
+                    "Canonicalizer produced '%s' not in valid candidates for '%s' — keeping original.",
+                    canonical,
+                    relation,
+                )
+                return relation
+            return canonical
         except Exception:
             logger.exception(
                 "Canonicalization failed for '%s' — keeping original.", relation
@@ -234,8 +289,8 @@ class Canonicalizer:
 
     def _retrieve_top_k(
         self, relation: str, definition: str
-    ) -> list[tuple[str, str]]:
-        """Return the top-K (relation, definition) pairs by cosine similarity."""
+    ) -> list[tuple[str, str, float]]:
+        """Return the top-K (relation, definition, score) tuples by cosine similarity >= min_similarity."""
         if self._schema_embeddings is None or not self._schema_items:
             return []
         query_text = f"{relation}: {definition}"
@@ -246,5 +301,12 @@ class Canonicalizer:
         scores: np.ndarray = self._schema_embeddings @ query_emb
         k = min(self.top_k, len(self._schema_items))
         top_indices = np.argsort(scores)[::-1][:k]
-        return [self._schema_items[int(i)] for i in top_indices]
+
+        results: list[tuple[str, str, float]] = []
+        for i in top_indices:
+            score = float(scores[int(i)])
+            if score >= self.min_similarity:
+                rel, defn = self._schema_items[int(i)]
+                results.append((rel, defn, score))
+        return results
 

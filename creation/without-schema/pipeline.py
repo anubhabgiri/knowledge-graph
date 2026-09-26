@@ -26,6 +26,8 @@ def run(
     chunk_size: int = 512,
     chunk_overlap: int = 64,
     top_k_choices: int = 5,
+    min_similarity: float = 0.45,
+    domain: str = "general",
     provider: str = "gemini",
     model: str | None = None,
     max_retries: int = 2,
@@ -53,6 +55,10 @@ def run(
         Overlap tokens between consecutive chunks.
     top_k_choices:
         Number of schema candidates to surface per canonicalization LLM call.
+    min_similarity:
+        Minimum cosine similarity threshold to consider candidate relations for merging.
+    domain:
+        Domain configuration preset: ``"general"`` or ``"biomedical"``.
     provider:
         LLM provider to use: ``"gemini"``, ``"openai"``, or ``"ollama"``.
     model:
@@ -71,8 +77,8 @@ def run(
     model_label = f"{provider}/{model or 'default'}"
 
     logger.info(
-        "Pipeline start | provider=%s  model=%s  chunk_size=%d  overlap=%d  top_k=%d",
-        provider, model or "default", chunk_size, chunk_overlap, top_k_choices,
+        "Pipeline start | domain=%s provider=%s  model=%s  chunk_size=%d  overlap=%d  top_k=%d  min_sim=%.2f",
+        domain, provider, model or "default", chunk_size, chunk_overlap, top_k_choices, min_similarity,
     )
 
     # ------------------------------------------------------------------
@@ -85,7 +91,7 @@ def run(
     # ------------------------------------------------------------------
     # Stage 2: Triplet extraction  (Step 1 from notebook)
     # ------------------------------------------------------------------
-    extractor = TripletExtractor(llm=llm)
+    extractor = TripletExtractor(llm=llm, domain=domain)
     all_triplets: list[Triplet] = []
 
     for i, chunk in enumerate(chunks):
@@ -96,7 +102,7 @@ def run(
 
     if not all_triplets:
         logger.warning("No triplets extracted — writing empty graph.")
-        output = _empty_output(model_label, len(chunks))
+        output = _empty_output(model_label, len(chunks), domain=domain)
         _write_json(output, output_path)
         return output
 
@@ -107,13 +113,18 @@ def run(
     # ------------------------------------------------------------------
     unique_count = len({t.relation for t in all_triplets})
     logger.info("Defining %d unique relation(s) …", unique_count)
-    definer = RelationDefiner(llm=llm)
+    definer = RelationDefiner(llm=llm, domain=domain)
     relation_definitions = definer.define(all_triplets)
 
     # ------------------------------------------------------------------
     # Stage 4: Schema bootstrap + Canonicalization  (Step 3 from notebook)
     # ------------------------------------------------------------------
-    canonicalizer = Canonicalizer(llm=llm, top_k=top_k_choices)
+    canonicalizer = Canonicalizer(
+        llm=llm,
+        top_k=top_k_choices,
+        min_similarity=min_similarity,
+        domain=domain,
+    )
     canonicalizer.bootstrap_schema(relation_definitions)
 
     canonical_mapping = canonicalizer.canonicalize_all(relation_definitions, all_triplets)
@@ -150,6 +161,7 @@ def run(
         relation_definitions=canonical_definitions,
         metadata={
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "domain": domain,
             "provider": provider,
             "model": model_label,
             "chunk_count": len(chunks),
@@ -170,12 +182,13 @@ def run(
 # ---------------------------------------------------------------------------
 
 
-def _empty_output(model: str, chunk_count: int) -> GraphOutput:
+def _empty_output(model: str, chunk_count: int, domain: str = "general") -> GraphOutput:
     return GraphOutput(
         triplets=[],
         relation_definitions={},
         metadata={
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "domain": domain,
             "model": model,
             "chunk_count": chunk_count,
             "raw_triplet_count": 0,

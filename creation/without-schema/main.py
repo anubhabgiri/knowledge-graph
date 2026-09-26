@@ -75,6 +75,20 @@ logging.basicConfig(
     help="Number of canonical-relation candidates surfaced per LLM call.",
 )
 @click.option(
+    "--min-similarity",
+    default=0.45,
+    show_default=True,
+    type=float,
+    help="Minimum cosine similarity threshold to consider candidate relations for canonicalization.",
+)
+@click.option(
+    "--domain", "-d",
+    default="general",
+    show_default=True,
+    type=click.Choice(["general", "biomedical"], case_sensitive=False),
+    help="Domain preset for prompts and reasoning rules ('general' or 'biomedical').",
+)
+@click.option(
     "--provider",
     default="gemini",
     show_default=True,
@@ -96,6 +110,8 @@ def main(
     chunk_size: int,
     chunk_overlap: int,
     top_k: int,
+    min_similarity: float,
+    domain: str,
     provider: str,
     model: str | None,
 ) -> None:
@@ -123,6 +139,8 @@ def main(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         top_k_choices=top_k,
+        min_similarity=min_similarity,
+        domain=domain,
         provider=provider,
         model=model,
     )

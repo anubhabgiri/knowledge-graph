@@ -1,0 +1,56 @@
+10078028|t|Lithium-induced nephrogenic diabetes insipidus: changes in the osteopontin synthesis and urinary excretion.
+10078028|a|Lithium (Li) is widely used for psychiatric disorders, but its prolonged administration frequently causes nephrogenic diabetes insipidus (NDI). In this study, adult male Wistar rats were treated with lithium chloride for 4 weeks. Lithium treatment induced severe polyuria, polydipsia, and impaired urinary concentrating capacity. Renal biopsy revealed marked tubular lesions in the collecting ducts. Our findings demonstrate that lithium directly causes nephrogenic diabetes insipidus accompanied by prominent tubular injury.
+10078028	0	7	Lithium	Chemical	D008094
+10078028	16	46	nephrogenic diabetes insipidus	Disease	D003923
+10078028	82	103	psychiatric disorders	Disease	D001523
+10078028	149	179	nephrogenic diabetes insipidus	Disease	D003923
+10078028	181	184	NDI	Disease	D003923
+10078028	244	260	lithium chloride	Chemical	D008094
+10078028	278	285	Lithium	Chemical	D008094
+10078028	303	311	polyuria	Disease	D011141
+10078028	313	323	polydipsia	Disease	D011115
+10078028	390	405	tubular lesions	Disease	D007674
+10078028	460	467	lithium	Chemical	D008094
+10078028	484	514	nephrogenic diabetes insipidus	Disease	D003923
+10078028	538	552	tubular injury	Disease	D007674
+10078028	CID	D008094	D003923
+10078028	CID	D008094	D011141
+10078028	CID	D008094	D011115
+10078028	CID	D008094	D007674
+
+10090295|t|Acute renal failure induced by cisplatin chemotherapy in ovarian cancer patients.
+10090295|a|Cisplatin is an effective chemotherapeutic agent for ovarian neoplasms, but its therapeutic potential is compromised by nephrotoxicity. We examined patients who developed acute renal failure following intravenous cisplatin administration. Elevated serum creatinine, severe proteinuria, and metabolic acidosis were observed within 7 days. The findings confirm that cisplatin induces acute renal failure and metabolic acidosis during therapeutic regimens.
+10090295	0	9	Cisplatin	Chemical	D002945
+10090295	24	44	acute renal failure	Disease	D058186
+10090295	56	65	cisplatin	Chemical	D002945
+10090295	82	99	ovarian neoplasms	Disease	D010051
+10090295	139	153	nephrotoxicity	Disease	D007674
+10090295	201	221	acute renal failure	Disease	D058186
+10090295	244	253	cisplatin	Chemical	D002945
+10090295	292	303	proteinuria	Disease	D011507
+10090295	309	327	metabolic acidosis	Disease	D000142
+10090295	378	387	cisplatin	Chemical	D002945
+10090295	396	416	acute renal failure	Disease	D058186
+10090295	421	439	metabolic acidosis	Disease	D000142
+10090295	CID	D002945	D058186
+10090295	CID	D002945	D007674
+10090295	CID	D002945	D011507
+10090295	CID	D002945	D000142
+
+10372223|t|Bleomycin-induced pulmonary fibrosis in experimental mouse models.
+10372223|a|Bleomycin is frequently used in chemotherapy, but clinical utility is severely limited by pulmonary toxicity. Intratracheal administration of bleomycin in mice produced widespread alveolar inflammation and severe pulmonary fibrosis. Extensive collagen deposition, lung stiffness, and respiratory distress were documented. Bleomycin is confirmed as a causative agent of severe pulmonary fibrosis and alveolar inflammation in animal models.
+10372223	0	9	Bleomycin	Chemical	D001761
+10372223	18	36	pulmonary fibrosis	Disease	D011658
+10372223	54	63	Bleomycin	Chemical	D001761
+10372223	131	149	pulmonary toxicity	Disease	D011658
+10372223	188	197	bleomycin	Chemical	D001761
+10372223	222	243	alveolar inflammation	Disease	D011014
+10372223	255	273	pulmonary fibrosis	Disease	D011658
+10372223	324	344	respiratory distress	Disease	D012128
+10372223	363	372	Bleomycin	Chemical	D001761
+10372223	412	430	pulmonary fibrosis	Disease	D011658
+10372223	435	456	alveolar inflammation	Disease	D011014
+10372223	CID	D001761	D011658
+10372223	CID	D001761	D011014
+10372223	CID	D001761	D012128
+
